@@ -11,11 +11,11 @@ from collections import deque
 from dotenv import load_dotenv 
 from transformers import WhisperTokenizer
 
-load_dotenv()
+load_dotenv("keys.env")
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") 
-MAX_TOKENS = os.getenv("MAX_TOKENS", 50)
-INTERVALO = os.getenv("INTERVALO", 3)
+MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
+INTERVALO = int(os.getenv("INTERVALO"))
 
 def cargar_prompts(directorio="./prompts"):
     prompts = {}
@@ -41,10 +41,11 @@ def cargar_prompts(directorio="./prompts"):
 
 
 def limpiar_texto(texto):
-    texto = re.sub(r'(.)\1{3,}', r'\1\1\1', texto)  # Limita repeticiones
-    texto = re.sub(r'\s+', ' ', texto)             # Normaliza espacios
-    texto = ''.join(c for c in texto if c.isprintable())  # Elimina caracteres no imprimibles
+    texto = re.sub(r'(.)\1{3,}', r'\1\1\1', texto)
+    texto = re.sub(r'\s+', ' ', texto)
+    texto = ''.join(c for c in texto if c.isprintable())
     return texto.strip()
+
 
 def actualizar_contexto(nuevo_texto, context_tokens, tokenizer):
     nuevo_texto = limpiar_texto(nuevo_texto)
@@ -60,16 +61,34 @@ def actualizar_contexto(nuevo_texto, context_tokens, tokenizer):
 
     return context_tokens
 
+
 def obtener_contexto_actual(context_tokens, tokenizer):
     solo_tokens = [tok for tok, _ in context_tokens]
     return tokenizer.convert_tokens_to_string(solo_tokens)
+
+
+def es_texto_valido(texto):
+    texto = texto.strip()
+    if not texto:
+        return False
+    if not re.search(r'\w', texto):
+        return False
+    if re.fullmatch(r'(.)\1{5,}', texto):
+        return False
+    if len(texto.split()) < 2:
+        return False
+    return True
+
+def mover_archivo(origen, destino_directorio):
+    os.makedirs(destino_directorio, exist_ok=True)
+    nombre_archivo = os.path.basename(origen)
+    destino = os.path.join(destino_directorio, nombre_archivo)
+    shutil.move(origen, destino)
 
 def transcribe_and_move_old_audios(extension, intervalo, prompts):
     carpeta = "./grabaciones"
     carpeta_destino = "./grabaciones_procesadas"
     os.makedirs(carpeta_destino, exist_ok=True)
-
-    print(f"[INFO] Iniciando supervisión de: {carpeta}")
     model = whisper.load_model("medium")
 
     tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-base")
@@ -80,40 +99,47 @@ def transcribe_and_move_old_audios(extension, intervalo, prompts):
             archivos = [f for f in os.listdir(carpeta) if f.endswith(extension) and os.path.isfile(os.path.join(carpeta, f))]
             archivos = sorted(archivos)
             if len(archivos) > 0:
-                print(f"[INFO] {len(archivos)} archivos encontrados. Procesando {len(archivos)-1}...")
-                for archivo in archivos[:-1]:
+                for archivo in archivos:
                     ruta = os.path.join(carpeta, archivo)
                     try:
                         texto_transcrito = model.transcribe(ruta, language="es")
-                        print(f"[WHISPER]\t{archivo} → {texto_transcrito['text']}")
+                        mover_archivo(ruta, carpeta_destino)
+                        print("*"*100)
+                        print(f"[INFO]\t Archivo transcrito: {archivo}")
+                        print(f"[WHISPER]\t {texto_transcrito['text']}")
                         
+                        if not es_texto_valido(texto_transcrito['text']):
+                            print(f"[INFO] Texto no válido en {archivo}. Saltando...")
+                            continue
                         
                         context_tokens = actualizar_contexto(texto_transcrito['text'],context_tokens,tokenizer)
                         context_tokens_str = obtener_contexto_actual(context_tokens,tokenizer)
-                        print(f"[TOKENIZER]\t{archivo} → {context_tokens_str}")
+                        print(f"[TOKENIZER]\t {context_tokens_str}")
                         
                         respuesta_clasificador = gemini_api_llm(f"{prompts['clasificador']} {context_tokens_str}")
-                        if respuesta_clasificador['categoria'] != "ninguna":
-                            respuesta = gemini_api_llm(f"{prompts[respuesta_clasificador['categoria']]} {context_tokens_str}")
-                            print(f"[GEMINI]\t{respuesta}")
                         
+                        if respuesta_clasificador:
+                            print(f"[GEMINI_CLASS]\t {respuesta_clasificador}")
+                            if respuesta_clasificador['categoria'] != "ninguna":
+                                respuesta = gemini_api_llm(f"{prompts[respuesta_clasificador['categoria']]} {context_tokens_str}")
+                                print(f"[GEMINI_AGENT]\t {respuesta}")
+                        else:
+                            print("[GEMINI_CLASSIFIER]\t No se obtuvo respuesta del clasificador.")
+                            continue
+  
                     except Exception as e:
-                        print(f"[ERROR] Error en {archivo}: {e}")
+                        print(f"[ERROR]\t Error en {archivo}: {e}")
                         continue
-
-                    destino = os.path.join(carpeta_destino, archivo)
-                    shutil.move(ruta, destino)
-                    print(f"[INFO] {archivo} movido a {destino}")
             else:
+                print("*"*100)
                 print("[INFO] No hay archivos. Esperando...")
-
-            time.sleep(intervalo)
-
+                time.sleep(intervalo)
     except KeyboardInterrupt:
         print("\nProceso interrumpido por el usuario.")
     finally:
         del model
         torch.cuda.empty_cache()
+
 
 def gemini_api_llm(user_prompt):
     genai.configure(api_key=GOOGLE_API_KEY)
@@ -130,6 +156,7 @@ def gemini_api_llm(user_prompt):
     except Exception as e:
         print(f"\n¡Ocurrió un error al generar la respuesta!: {e}")
         print("Posibles razones: límites de uso excedidos, API Key inválida, o problemas de conexión.")
+
 
 if __name__ == "__main__":
     prompts = cargar_prompts()

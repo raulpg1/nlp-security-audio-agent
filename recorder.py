@@ -4,6 +4,7 @@ import sounddevice as sd
 from pydub import AudioSegment
 from datetime import datetime
 
+
 def record_audio(duration):
     """
     Graba audio desde el micrófono durante un tiempo especificado, lo guarda en formato MP3
@@ -41,6 +42,7 @@ def record_audio(duration):
     audio_segment.export(ruta_completa, format="mp3")
     print(f"[record]\t Audio guardado en: {ruta_completa}")
     return ruta_completa
+
 
 if __name__ == "__main__":
     while True:
