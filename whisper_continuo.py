@@ -13,9 +13,16 @@ from transformers import WhisperTokenizer
 
 load_dotenv("keys.env")
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") 
+
+RECORD_FOLDER = os.getenv("RECORD_FOLDER")
+DESTINATION_FOLDER = os.getenv("DESTINATION_FOLDER")
+
 MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
-INTERVALO = int(os.getenv("INTERVALO"))
+ON_HOLD = int(os.getenv("ON_HOLD"))
+
+WHISPER_MODEL = os.getenv("WHISPER_MODEL")
+MODEL_NAME= os.getenv("MODEL_NAME")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") 
 
 def cargar_prompts(directorio="./prompts"):
     prompts = {}
@@ -85,27 +92,23 @@ def mover_archivo(origen, destino_directorio):
     destino = os.path.join(destino_directorio, nombre_archivo)
     shutil.move(origen, destino)
 
-def transcribe_and_move_old_audios(extension, intervalo, prompts):
-    carpeta = "./grabaciones"
-    carpeta_destino = "./grabaciones_procesadas"
-    os.makedirs(carpeta_destino, exist_ok=True)
-    model = whisper.load_model("medium")
-
+def transcribe_and_classify(extension=".mp3"):
+    prompts = cargar_prompts()
+    model = whisper.load_model(WHISPER_MODEL)
     tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-base")
     context_tokens = deque()
 
     try:
         while True:
-            archivos = [f for f in os.listdir(carpeta) if f.endswith(extension) and os.path.isfile(os.path.join(carpeta, f))]
+            archivos = [f for f in os.listdir(RECORD_FOLDER) if f.endswith(extension) and os.path.isfile(os.path.join(RECORD_FOLDER, f))]
             archivos = sorted(archivos)
             if len(archivos) > 0:
                 for archivo in archivos:
-                    ruta = os.path.join(carpeta, archivo)
+                    ruta = os.path.join(RECORD_FOLDER, archivo)
                     try:
                         texto_transcrito = model.transcribe(ruta, language="es")
-                        mover_archivo(ruta, carpeta_destino)
-                        print("*"*100)
-                        print(f"[INFO]\t Archivo transcrito: {archivo}")
+                        mover_archivo(ruta, DESTINATION_FOLDER)
+                        print("*"*100,f"\n[INFO]\t Archivo transcrito: {archivo}")
                         print(f"[WHISPER]\t {texto_transcrito['text']}")
                         
                         if not es_texto_valido(texto_transcrito['text']):
@@ -133,7 +136,7 @@ def transcribe_and_move_old_audios(extension, intervalo, prompts):
             else:
                 print("*"*100)
                 print("[INFO] No hay archivos. Esperando...")
-                time.sleep(intervalo)
+                time.sleep(ON_HOLD)
     except KeyboardInterrupt:
         print("\nProceso interrumpido por el usuario.")
     finally:
@@ -143,21 +146,17 @@ def transcribe_and_move_old_audios(extension, intervalo, prompts):
 
 def gemini_api_llm(user_prompt):
     genai.configure(api_key=GOOGLE_API_KEY)
-    model_name = "gemini-2.0-flash"  # model_name = "gemini-1.5-flash" 
     try:
-        model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel(MODEL_NAME)
     except Exception as e:
-        print(f"Error al cargar el modelo '{model_name}': {e}")
-        print("Asegúrate de que el modelo esté disponible en tu región y que tu API Key sea válida.")
+        print(f"Error al cargar el modelo '{MODEL_NAME}': {e}\n Asegúrate de que el modelo esté disponible en tu región y que tu API Key sea válida.")
         exit()
     try:
         response = model.generate_content(user_prompt)
         return json.loads(response.text.replace('```json\n', '').replace('\n', '').replace('`', ''))
     except Exception as e:
-        print(f"\n¡Ocurrió un error al generar la respuesta!: {e}")
-        print("Posibles razones: límites de uso excedidos, API Key inválida, o problemas de conexión.")
+        print(f"\n¡Ocurrió un error al generar la respuesta!: {e}\n Posibles razones: límites de uso excedidos, API Key inválida, o problemas de conexión.")
 
 
 if __name__ == "__main__":
-    prompts = cargar_prompts()
-    transcribe_and_move_old_audios(extension=".mp3", intervalo=INTERVALO, prompts=prompts)
+    transcribe_and_classify()
