@@ -1,11 +1,15 @@
 import os
 import numpy as np
 import sounddevice as sd
+
+from dotenv import load_dotenv
 from pydub import AudioSegment
 from datetime import datetime
 
+load_dotenv("keys.env")
+AUDIO_DURATION = int(os.getenv("AUDIO_DURATION"))
 
-def record_audio(duration):
+def record_audio():
     """
     Graba audio desde el micrófono durante un tiempo especificado, lo guarda en formato MP3
     dentro de una carpeta con timestamp, y devuelve la ruta del archivo generado.
@@ -28,7 +32,7 @@ def record_audio(duration):
 
     archivo = f"{timestamp}_record.mp3"
     ruta_completa = os.path.join(carpeta_base, archivo)
-    audio = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=channels, dtype='int16')
+    audio = sd.rec(int(AUDIO_DURATION * sample_rate), samplerate=sample_rate, channels=channels, dtype='int16')
     sd.wait()
 
     audio_np = np.array(audio)
@@ -46,4 +50,4 @@ def record_audio(duration):
 
 if __name__ == "__main__":
     while True:
-        record_audio(30)
+        record_audio()

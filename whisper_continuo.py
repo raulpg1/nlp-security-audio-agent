@@ -13,13 +13,11 @@ from transformers import WhisperTokenizer
 
 load_dotenv("keys.env")
 
-
 RECORD_FOLDER = os.getenv("RECORD_FOLDER")
 DESTINATION_FOLDER = os.getenv("DESTINATION_FOLDER")
-
 MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
-ON_HOLD = int(os.getenv("ON_HOLD"))
-
+AUDIO_DURATION = int(os.getenv("AUDIO_DURATION"))
+MAX_SILENT_ITERS = int(os.getenv("MAX_SILENT_ITERS"))
 WHISPER_MODEL = os.getenv("WHISPER_MODEL")
 MODEL_NAME= os.getenv("MODEL_NAME")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") 
@@ -86,41 +84,52 @@ def es_texto_valido(texto):
         return False
     return True
 
+
 def mover_archivo(origen, destino_directorio):
     os.makedirs(destino_directorio, exist_ok=True)
     nombre_archivo = os.path.basename(origen)
     destino = os.path.join(destino_directorio, nombre_archivo)
     shutil.move(origen, destino)
 
-def transcribe_and_classify(extension=".mp3"):
+
+def real_time_analyzer(extension=".mp3"):
     prompts = cargar_prompts()
     model = whisper.load_model(WHISPER_MODEL)
     tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-base")
     context_tokens = deque()
-
+    empty_text_counter = 0
     try:
         while True:
             archivos = [f for f in os.listdir(RECORD_FOLDER) if f.endswith(extension) and os.path.isfile(os.path.join(RECORD_FOLDER, f))]
             archivos = sorted(archivos)
             if len(archivos) > 0:
                 for archivo in archivos:
-                    ruta = os.path.join(RECORD_FOLDER, archivo)
+                    file_path = os.path.join(RECORD_FOLDER, archivo)
                     try:
-                        texto_transcrito = model.transcribe(ruta, language="es")
-                        mover_archivo(ruta, DESTINATION_FOLDER)
+                        # BLOQUE DE TRANSCRIPCIÓN Y LIMPIEZA DE TEXTO
+                        texto_transcrito = model.transcribe(file_path, language="es")
+                        mover_archivo(file_path, DESTINATION_FOLDER)
                         print("*"*100,f"\n[INFO]\t Archivo transcrito: {archivo}")
-                        print(f"[WHISPER]\t {texto_transcrito['text']}")
-                        
                         if not es_texto_valido(texto_transcrito['text']):
-                            print(f"[INFO] Texto no válido en {archivo}. Saltando...")
+                            empty_text_counter += 1
+                            if empty_text_counter >= MAX_SILENT_ITERS and len(context_tokens) > 0:
+                                tokens_a_eliminar = min(10, len(context_tokens))
+                                for _ in range(tokens_a_eliminar):
+                                    context_tokens.popleft()
+                            print(f"[INFO]\t Texto no válido en {archivo}. Texto transcrito:'{texto_transcrito['text']}'")
+                            print(f"[CONTEXT]\t {obtener_contexto_actual(context_tokens,tokenizer)}")
                             continue
+                        else:
+                            empty_text_counter = 0
+                            print(f"[WHISPER]\t {texto_transcrito['text']}")
                         
+                        # BLOQUE DE ACTUALIZACIÓN DEL CONTEXTO
                         context_tokens = actualizar_contexto(texto_transcrito['text'],context_tokens,tokenizer)
                         context_tokens_str = obtener_contexto_actual(context_tokens,tokenizer)
-                        print(f"[TOKENIZER]\t {context_tokens_str}")
+                        print(f"[CONTEXT]\t {context_tokens_str}")
                         
+                        # BLOQUE DE CLASIFICACIÓN Y RESPUESTA
                         respuesta_clasificador = gemini_api_llm(f"{prompts['clasificador']} {context_tokens_str}")
-                        
                         if respuesta_clasificador:
                             print(f"[GEMINI_CLASS]\t {respuesta_clasificador}")
                             if respuesta_clasificador['categoria'] != "ninguna":
@@ -129,14 +138,13 @@ def transcribe_and_classify(extension=".mp3"):
                         else:
                             print("[GEMINI_CLASSIFIER]\t No se obtuvo respuesta del clasificador.")
                             continue
-  
+
                     except Exception as e:
                         print(f"[ERROR]\t Error en {archivo}: {e}")
                         continue
             else:
-                print("*"*100)
-                print("[INFO] No hay archivos. Esperando...")
-                time.sleep(ON_HOLD)
+                print("*"*100,"\n[INFO] No hay archivos. Esperando...")
+                time.sleep(AUDIO_DURATION)
     except KeyboardInterrupt:
         print("\nProceso interrumpido por el usuario.")
     finally:
@@ -159,4 +167,4 @@ def gemini_api_llm(user_prompt):
 
 
 if __name__ == "__main__":
-    transcribe_and_classify()
+    real_time_analyzer()
