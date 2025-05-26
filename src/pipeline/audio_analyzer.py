@@ -5,8 +5,8 @@ import whisper
 from collections import deque
 from transformers import WhisperTokenizer
 from pipeline.utils import move_audio_file, is_valid_text
-from src.pipeline.gemini_client import gemini_api_llm
-from src.pipeline.tokenizer import update_context, get_actual_context
+from pipeline.gemini_client import gemini_api_llm
+from pipeline.tokenizer import update_context, get_actual_context
 from config.prompts_loader import load_prompts
 from config.settings import RECORD_FOLDER, DESTINATION_FOLDER, WHISPER_MODEL, AUDIO_DURATION, MAX_SILENT_ITERS
 
