@@ -1,13 +1,8 @@
 import os
 import re
 from collections import deque
-from dotenv import load_dotenv 
 from transformers import WhisperTokenizer
-
-load_dotenv("keys.env")
-
-MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
-
+from config.settings import MAX_TOKENS
 
 def clean_text(texto: str) -> str:
     """

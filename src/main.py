@@ -1,4 +1,4 @@
-from src.analyzer import real_time_analyzer
+from pipeline.analyzer import real_time_analyzer
 
 if __name__ == "__main__":
     real_time_analyzer()

@@ -1,13 +1,9 @@
 import os
 import numpy as np
 import sounddevice as sd
-
-from dotenv import load_dotenv
 from pydub import AudioSegment
 from datetime import datetime
-
-load_dotenv("keys.env")
-AUDIO_DURATION = int(os.getenv("AUDIO_DURATION"))
+from config.settings import AUDIO_DURATION
 
 def record_audio():
     """

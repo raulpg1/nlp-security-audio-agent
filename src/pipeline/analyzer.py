@@ -2,30 +2,14 @@ import os
 import time
 import torch
 import whisper
-
 from collections import deque
-from dotenv import load_dotenv 
 from transformers import WhisperTokenizer
 
-from utils import move_audio_file, is_valid_text
-from classifier import gemini_api_llm, load_prompts
-from transcriber import update_context, get_actual_context
-
-load_dotenv("keys.env")
-
-RECORD_FOLDER = os.getenv("RECORD_FOLDER")
-DESTINATION_FOLDER = os.getenv("DESTINATION_FOLDER")
-
-WHISPER_MODEL = os.getenv("WHISPER_MODEL")
-
-MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
-AUDIO_DURATION = int(os.getenv("AUDIO_DURATION"))
-MAX_SILENT_ITERS = int(os.getenv("MAX_SILENT_ITERS"))
-
-
-MODEL_NAME= os.getenv("MODEL_NAME")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") 
-
+from pipeline.classifier import gemini_api_llm
+from pipeline.utils import move_audio_file, is_valid_text
+from pipeline.transcriber import update_context, get_actual_context
+from config.prompts_loader import load_prompts
+from config.settings import RECORD_FOLDER, DESTINATION_FOLDER, WHISPER_MODEL, AUDIO_DURATION, MAX_SILENT_ITERS
 
 def real_time_analyzer(extension: str = ".mp3") -> None:
     """
@@ -55,14 +39,14 @@ def real_time_analyzer(extension: str = ".mp3") -> None:
 
                         texto_transcrito = model.transcribe(file_path, language="es")
                         move_audio_file(file_path, DESTINATION_FOLDER)
-                        print("*"*100,f"\n[INFO]\t Archivo transcrito: {archivo}")
+                        print("*"*100,f"\n[INFO]\t\t Archivo transcrito: {archivo}")
                         if not is_valid_text(texto_transcrito['text']):
                             empty_text_counter += 1
                             if empty_text_counter >= MAX_SILENT_ITERS and len(context_tokens) > 0:
                                 tokens_a_eliminar = min(10, len(context_tokens))
                                 for _ in range(tokens_a_eliminar):
                                     context_tokens.popleft()
-                            print(f"[INFO]\t Texto no válido en {archivo}. Texto transcrito:'{texto_transcrito['text']}'")
+                            print(f"[INFO]\t\t Texto transcrito no válido:'{texto_transcrito['text']}'")
                             print(f"[CONTEXT]\t {get_actual_context(context_tokens,tokenizer)}")
                             continue
                         else:
@@ -84,13 +68,13 @@ def real_time_analyzer(extension: str = ".mp3") -> None:
                             continue
 
                     except Exception as e:
-                        print(f"[ERROR]\t Error en {archivo}: {e}")
+                        print(f"[ERROR]\t\t Error en {archivo}: {e}")
                         continue
             else:
-                print("*"*100,"\n[INFO] No hay archivos. Esperando...")
+                print("*"*100,"\n[INFO]\t\t No hay archivos. Esperando...")
                 time.sleep(AUDIO_DURATION)
     except KeyboardInterrupt:
-        print("\nProceso interrumpido por el usuario.")
+        print("\n[INFO]\t\t Proceso interrumpido por el usuario.")
     finally:
         del model
         torch.cuda.empty_cache()
