@@ -4,10 +4,9 @@ import torch
 import whisper
 from collections import deque
 from transformers import WhisperTokenizer
-
-from pipeline.classifier import gemini_api_llm
 from pipeline.utils import move_audio_file, is_valid_text
-from pipeline.transcriber import update_context, get_actual_context
+from src.pipeline.gemini_client import gemini_api_llm
+from src.pipeline.tokenizer import update_context, get_actual_context
 from config.prompts_loader import load_prompts
 from config.settings import RECORD_FOLDER, DESTINATION_FOLDER, WHISPER_MODEL, AUDIO_DURATION, MAX_SILENT_ITERS
 
@@ -57,11 +56,11 @@ def real_time_analyzer(extension: str = ".mp3") -> None:
                         context_tokens_str = get_actual_context(context_tokens,tokenizer)
                         print(f"[CONTEXT]\t {context_tokens_str}")
                         
-                        respuesta_clasificador = gemini_api_llm(f"{prompts['clasificador']} {context_tokens_str}")
+                        respuesta_clasificador = gemini_api_llm(f"{prompts['clasificador']} {context_tokens_str}", retries=3)
                         if respuesta_clasificador:
                             print(f"[GEMINI_CLASS]\t {respuesta_clasificador}")
                             if respuesta_clasificador['categoria'] != "ninguna":
-                                respuesta = gemini_api_llm(f"{prompts[respuesta_clasificador['categoria']]} {context_tokens_str}")
+                                respuesta = gemini_api_llm(f"{prompts[respuesta_clasificador['categoria']]} {context_tokens_str}", retries=3)
                                 print(f"[GEMINI_AGENT]\t {respuesta}")
                         else:
                             print("[GEMINI_CLASSIFIER]\t No se obtuvo respuesta del clasificador.")
